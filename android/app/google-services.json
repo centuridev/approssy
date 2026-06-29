@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "344313066775",
+    "project_id": "rossi-app-a7cf4",
+    "storage_bucket": "rossi-app-a7cf4.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:344313066775:android:88b3dacb93f6e5f78db352",
+        "android_client_info": {
+          "package_name": "com.centuridev.rossi_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB6Ud2mNJgV5vp59txA5t4RCOJSYSQYEO4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
