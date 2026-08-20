@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 class BookingService {
   static Future<List<String>> getUnavailableHours(DateTime day) async {
@@ -19,8 +20,10 @@ class BookingService {
           .get();
 
       for (var doc in snapshot.docs) {
-        final selectedDateTime = (doc['selectedDateTime'] as Timestamp).toDate();
-        String start = '${selectedDateTime.hour.toString().padLeft(2, '0')}:${selectedDateTime.minute.toString().padLeft(2, '0')}';
+        final selectedDateTime = (doc['selectedDateTime'] as Timestamp)
+            .toDate();
+        String start =
+            '${selectedDateTime.hour.toString().padLeft(2, '0')}:${selectedDateTime.minute.toString().padLeft(2, '0')}';
         int duration = doc['serviceDuration'] ?? 0;
 
         final blockedSlots = calculateSlots(start, duration);
@@ -28,7 +31,9 @@ class BookingService {
       }
     } catch (e) {
       // Handle missing index or other errors: return empty (no hours blocked)
-      print('getUnavailableHours error for $day: $e');
+      debugPrint(
+        'BookingService - Error obteniendo horarios no disponibles para $day: $e',
+      );
       blocked = [];
     }
     return blocked;

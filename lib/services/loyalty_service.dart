@@ -17,7 +17,10 @@ class LoyaltyService {
 
   /// Verifica si ya se otorgó el descuento de fidelidad
   static Future<bool> hasDiscountAwarded(String userId) async {
-    final userDoc = await _firestore.collection(_usersCollection).doc(userId).get();
+    final userDoc = await _firestore
+        .collection(_usersCollection)
+        .doc(userId)
+        .get();
     return userDoc.data()?['discountAwardedAt'] != null;
   }
 

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:provider/provider.dart';
-import '../main.dart';
+import '../providers/auth_provider.dart';
 import 'registration_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -25,8 +25,6 @@ class _LoginPageState extends State<LoginPage> {
         email: email.text.trim(),
         password: password.text.trim(),
       );
-
-      if (!mounted) return;
 
       Provider.of<AuthProvider>(
         context,
@@ -135,7 +133,7 @@ class _LoginPageState extends State<LoginPage> {
                       backgroundColor: dark,
                       foregroundColor: gold,
                       elevation: 7,
-                      shadowColor: Colors.black.withOpacity(0.45),
+                      shadowColor: Colors.black.withValues(alpha: 0.45),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(11),
                       ),

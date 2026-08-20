@@ -3,29 +3,59 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 class AuthService {
   static const String _usersCollection = 'utenti';
+
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
   static final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  /// Obtiene role del usuario ('admin' o 'client')
+  /// Obtiene el rol del usuario.
+  /// Valores esperados: "admin" o "client".
   static Future<String> getUserRole(String userId) async {
     try {
-      final doc = await _firestore
+      final document = await _firestore
           .collection(_usersCollection)
           .doc(userId)
-          .get(const GetOptions(source: Source.server));
-      return doc.data()?['role']?.toString() ?? 'client';
-    } catch (e) {
-      return 'client';
+          .get();
+
+      if (!document.exists) {
+        return 'client';
+      }
+
+      final data = document.data();
+
+      final role = data?['role']?.toString().trim().toLowerCase() ?? 'client';
+
+      return role == 'admin' ? 'admin' : 'client';
+    } catch (error) {
+      // Intento adicional usando la caché local.
+      try {
+        final cachedDocument = await _firestore
+            .collection(_usersCollection)
+            .doc(userId)
+            .get(const GetOptions(source: Source.cache));
+
+        final data = cachedDocument.data();
+
+        final role = data?['role']?.toString().trim().toLowerCase() ?? 'client';
+
+        return role == 'admin' ? 'admin' : 'client';
+      } catch (_) {
+        return 'client';
+      }
     }
   }
 
-  /// Obtiene datos del usuario
+  /// Obtiene los datos completos del usuario.
   static Future<Map<String, dynamic>> getUserProfile(String userId) async {
-    final doc = await _firestore.collection(_usersCollection).doc(userId).get();
-    return doc.data() ?? {};
+    final document = await _firestore
+        .collection(_usersCollection)
+        .doc(userId)
+        .get();
+
+    return document.data() ?? {};
   }
 
-  /// Crea perfil de usuario en Firestore
+  /// Crea el perfil del usuario en Firestore.
   static Future<void> createUserProfile({
     required String userId,
     required String nome,
@@ -39,22 +69,25 @@ class AuthService {
       'cognome': cognome,
       'telefono': telefono,
       'email': email,
-      'role': role,
+      'role': role.trim().toLowerCase(),
       'createdAt': Timestamp.now(),
       'discountAwardedAt': null,
     });
   }
 
-  /// Chequea si es admin
+  /// Comprueba si un usuario tiene rol de administrador.
   static Future<bool> isAdmin(String userId) async {
-    return await getUserRole(userId) == 'admin';
+    final role = await getUserRole(userId);
+    return role == 'admin';
   }
 
-  /// Set role (para desarrollo)
+  /// Cambia el rol del usuario.
   static Future<void> setUserRole(String userId, String role) async {
-    await _firestore.collection(_usersCollection).doc(userId).update({'role': role});
+    await _firestore.collection(_usersCollection).doc(userId).update({
+      'role': role.trim().toLowerCase(),
+    });
   }
 
-  /// User actual
+  /// Usuario autenticado actualmente.
   static User? get currentUser => _auth.currentUser;
 }

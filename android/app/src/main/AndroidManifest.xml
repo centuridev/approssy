@@ -2,7 +2,7 @@
     package="com.centuridev.rossi_app"> 
         ...
     <application
-        android:label="rossi_app"
+        android:label="Rosi Beauty Premium"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

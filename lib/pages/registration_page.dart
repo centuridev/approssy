@@ -1,7 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../main.dart';
+import '../providers/auth_provider.dart';
 import '../services/auth_service.dart';
 
 class RegistrationPage extends StatefulWidget {
@@ -13,7 +13,7 @@ class RegistrationPage extends StatefulWidget {
 
 class _RegistrationPageState extends State<RegistrationPage> {
   final nomeController = TextEditingController();
-  final cognomeController = TextEditingController();
+
   final telefonoController = TextEditingController();
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
@@ -68,14 +68,12 @@ class _RegistrationPageState extends State<RegistrationPage> {
   }
 
   Future<void> register() async {
-    final nome = nomeController.text.trim();
-    final cognome = cognomeController.text.trim();
+    final nomeCompleto = nomeController.text.trim();
     final telefono = telefonoController.text.trim();
     final email = emailController.text.trim();
     final password = passwordController.text.trim();
 
-    if (nome.isEmpty ||
-        cognome.isEmpty ||
+    if (nomeCompleto.isEmpty ||
         telefono.isEmpty ||
         email.isEmpty ||
         password.isEmpty) {
@@ -84,6 +82,21 @@ class _RegistrationPageState extends State<RegistrationPage> {
       ).showSnackBar(const SnackBar(content: Text('Completa tutti i campi')));
       return;
     }
+
+    final partiNome = nomeCompleto
+        .split(RegExp(r'\s+'))
+        .where((parte) => parte.isNotEmpty)
+        .toList();
+
+    if (partiNome.length < 2) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Inserisci nome e cognome')));
+      return;
+    }
+
+    final nome = partiNome.first;
+    final cognome = partiNome.sublist(1).join(' ');
 
     setState(() => isLoading = true);
 
@@ -101,17 +114,23 @@ class _RegistrationPageState extends State<RegistrationPage> {
 
       if (!mounted) return;
 
-      Provider.of<AuthProvider>(
+      await Provider.of<AuthProvider>(
         context,
         listen: false,
       ).loadRole(credential.user!.uid);
 
+      if (!mounted) return;
+
       Navigator.of(context).pop();
     } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Errore: ${e.message}')));
     } catch (e) {
+      if (!mounted) return;
+
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Errore: $e')));
@@ -208,7 +227,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
                       backgroundColor: dark,
                       foregroundColor: gold,
                       elevation: 7,
-                      shadowColor: Colors.black.withOpacity(0.45),
+                      shadowColor: Colors.black.withValues(alpha: 0.45),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(11),
                       ),
@@ -218,7 +237,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
                             height: 20,
                             width: 20,
                             child: CircularProgressIndicator(
-                              color: gold,
+                              color: const Color(0xFFDDA33B),
                               strokeWidth: 2,
                             ),
                           )
