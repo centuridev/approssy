@@ -10,6 +10,8 @@ class ServiceAccordionItemWrapper extends StatefulWidget {
   // Nuevos parámetros para reserva múltiple.
   final bool isSelected;
   final List<ServiceExtra> selectedExtras;
+  final CategoryExtrasResult categoryExtras;
+  final bool extrasAreLoading;
   final ValueChanged<Service>? onToggleService;
   final void Function(Service, ServiceExtra)? onToggleExtra;
 
@@ -19,6 +21,8 @@ class ServiceAccordionItemWrapper extends StatefulWidget {
     required this.index,
     this.isSelected = false,
     this.selectedExtras = const [],
+    this.categoryExtras = const CategoryExtrasResult.missing(),
+    this.extrasAreLoading = false,
     this.onToggleService,
     this.onToggleExtra,
   });
@@ -45,6 +49,8 @@ class _ServiceAccordionItemWrapperState
       isExpanded: isExpanded,
       isSelected: widget.isSelected,
       selectedExtras: widget.selectedExtras,
+      categoryExtras: widget.categoryExtras,
+      extrasAreLoading: widget.extrasAreLoading,
       onTap: () {
         setState(() {
           expandedServiceId = isExpanded ? null : serviceKey;
@@ -62,6 +68,8 @@ class ServiceAccordionItem extends StatelessWidget {
   final bool isSelected;
 
   final List<ServiceExtra> selectedExtras;
+  final CategoryExtrasResult categoryExtras;
+  final bool extrasAreLoading;
 
   final VoidCallback onTap;
   final ValueChanged<Service>? onToggleService;
@@ -73,6 +81,8 @@ class ServiceAccordionItem extends StatelessWidget {
     required this.isExpanded,
     required this.isSelected,
     required this.selectedExtras,
+    this.categoryExtras = const CategoryExtrasResult.missing(),
+    this.extrasAreLoading = false,
     required this.onTap,
     this.onToggleService,
     this.onToggleExtra,
@@ -318,6 +328,9 @@ class ServiceAccordionItem extends StatelessWidget {
 
   Widget _expandedContent(BuildContext context) {
     final hasDetails = service.details.trim().isNotEmpty;
+    final availableExtras = service.availableExtrasFrom(categoryExtras);
+    final shouldShowExtras = multiSelectionEnabled &&
+        (availableExtras.isNotEmpty || extrasAreLoading);
 
     return Container(
       width: double.infinity,
@@ -406,13 +419,23 @@ class ServiceAccordionItem extends StatelessWidget {
             ],
           ),
 
-          if (multiSelectionEnabled &&
-              isSelected &&
-              service.extras.isNotEmpty) ...[
+          if (shouldShowExtras) ...[
             const SizedBox(height: 16),
             const Divider(),
             const SizedBox(height: 8),
-            _buildExtrasSection(),
+            if (availableExtras.isEmpty && extrasAreLoading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Center(
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+              )
+            else
+              _buildExtrasSection(availableExtras),
           ],
         ],
       ),
@@ -491,7 +514,7 @@ class ServiceAccordionItem extends StatelessWidget {
     );
   }
 
-  Widget _buildExtrasSection() {
+  Widget _buildExtrasSection(List<ServiceExtra> availableExtras) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -519,7 +542,7 @@ class ServiceAccordionItem extends StatelessWidget {
 
         const SizedBox(height: 10),
 
-        ...service.extras.map((extra) => _buildExtraItem(extra)),
+        ...availableExtras.map((extra) => _buildExtraItem(extra)),
       ],
     );
   }

@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/booking_selection.dart';
 import '../models/service.dart';
 import '../providers/auth_provider.dart';
+import '../services/service_extras_service.dart';
 import '../widgets/background_container.dart';
 import '../widgets/service_accordion_item.dart';
 import 'admin_page.dart';
@@ -81,14 +82,14 @@ class _CatalogoPageState extends State<CatalogoPage> {
     final key = _serviceKey(service);
     final currentSelection = _selections[key];
 
-    debugPrint(
-      'EXTRA DEBUG -> '
-      'name=${extra.name}, '
-      'price=${extra.price}, '
-      'duration=${extra.duration}',
-    );
-
     if (currentSelection == null) {
+      setState(() {
+        _selections[key] = BookingSelection(
+          service: service,
+          selectedExtras: [extra],
+        );
+      });
+
       return;
     }
 
@@ -107,12 +108,6 @@ class _CatalogoPageState extends State<CatalogoPage> {
 
       _selections[key] = currentSelection.copyWith(selectedExtras: extras);
     });
-
-    debugPrint(
-      'TOTAL DEBUG -> '
-      'duration=${_selections[key]?.totalDuration}, '
-      'price=${_selections[key]?.totalPrice}',
-    );
   }
 
   void _clearSelections() {
@@ -448,6 +443,7 @@ class _CatalogoPageState extends State<CatalogoPage> {
                 children: [
                   categoryButton('Unghie', 'unghie'),
                   categoryButton('Ciglia', 'lashes'),
+                  categoryButton('Pedicure', 'pedicure'),
                 ],
               ),
             ),
@@ -495,14 +491,32 @@ class _CatalogoPageState extends State<CatalogoPage> {
                         id: document.id,
                       );
 
-                      return ServiceAccordionItemWrapper(
-                        key: ValueKey(document.id),
-                        service: service,
-                        index: index,
-                        isSelected: _isServiceSelected(service),
-                        selectedExtras: _selectedExtrasFor(service),
-                        onToggleService: _toggleService,
-                        onToggleExtra: _toggleExtra,
+                      return FutureBuilder<CategoryExtrasResult>(
+                        future:
+                            ServiceExtrasService.getActiveExtrasForCategory(
+                              service.category,
+                            ),
+                        builder: (context, extrasSnapshot) {
+                          final categoryExtras = extrasSnapshot.data ??
+                              (
+                                extrasSnapshot.hasError
+                                    ? const CategoryExtrasResult.error()
+                                    : const CategoryExtrasResult.pending()
+                              );
+                          return ServiceAccordionItemWrapper(
+                            key: ValueKey(document.id),
+                            service: service,
+                            index: index,
+                            isSelected: _isServiceSelected(service),
+                            selectedExtras: _selectedExtrasFor(service),
+                            categoryExtras: categoryExtras,
+                            extrasAreLoading:
+                                extrasSnapshot.connectionState ==
+                                ConnectionState.waiting,
+                            onToggleService: _toggleService,
+                            onToggleExtra: _toggleExtra,
+                          );
+                        },
                       );
                     },
                   );

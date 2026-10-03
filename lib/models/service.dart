@@ -90,6 +90,34 @@ class ServiceExtra {
   }
 }
 
+enum CategoryExtrasStatus { pending, missing, found, error }
+
+class CategoryExtrasResult {
+  final CategoryExtrasStatus status;
+  final List<ServiceExtra> extras;
+
+  const CategoryExtrasResult._({
+    required this.status,
+    required this.extras,
+  });
+
+  const CategoryExtrasResult.pending()
+      : this._(status: CategoryExtrasStatus.pending, extras: const []);
+
+  const CategoryExtrasResult.missing()
+      : this._(status: CategoryExtrasStatus.missing, extras: const []);
+
+  const CategoryExtrasResult.found(List<ServiceExtra> extras)
+      : this._(status: CategoryExtrasStatus.found, extras: extras);
+
+  const CategoryExtrasResult.error()
+      : this._(status: CategoryExtrasStatus.error, extras: const []);
+
+  bool get exists => status == CategoryExtrasStatus.found;
+
+  bool get shouldUseServiceFallback => status == CategoryExtrasStatus.missing;
+}
+
 class Service {
   final String id;
   final String name;
@@ -98,6 +126,8 @@ class Service {
   final String image;
   final String category;
   final String details;
+  final bool useCategoryExtras;
+  final List<String> allowedExtraIds;
   final List<ServiceExtra> extras;
 
   const Service({
@@ -108,6 +138,8 @@ class Service {
     required this.image,
     required this.category,
     this.details = '',
+    this.useCategoryExtras = true,
+    this.allowedExtraIds = const [],
     this.extras = const [],
   });
 
@@ -117,10 +149,32 @@ class Service {
     return double.tryParse(normalized) ?? 0;
   }
 
+  List<ServiceExtra> availableExtrasFrom(
+    CategoryExtrasResult categoryExtras,
+  ) {
+    final source = useCategoryExtras
+        ? categoryExtras.shouldUseServiceFallback
+              ? extras
+              : categoryExtras.extras
+        : extras;
+
+    if (allowedExtraIds.isEmpty) {
+      return source.where((extra) => extra.active).toList(growable: false);
+    }
+
+    final allowedIds = allowedExtraIds.toSet();
+
+    return source
+        .where((extra) => extra.active && allowedIds.contains(extra.id))
+        .toList(growable: false);
+  }
+
   factory Service.fromFirestore(Map<String, dynamic> data, {String id = ''}) {
     final rawExtras = data['extras'];
+    final rawAllowedExtraIds = data['allowedExtraIds'];
 
     final List<ServiceExtra> parsedExtras = [];
+    final List<String> parsedAllowedExtraIds = [];
 
     if (rawExtras is List) {
       for (final rawExtra in rawExtras) {
@@ -136,6 +190,16 @@ class Service {
       }
     }
 
+    if (rawAllowedExtraIds is List) {
+      for (final rawId in rawAllowedExtraIds) {
+        final extraId = rawId?.toString().trim() ?? '';
+
+        if (extraId.isNotEmpty) {
+          parsedAllowedExtraIds.add(extraId);
+        }
+      }
+    }
+
     return Service(
       id: id,
       name: data['name']?.toString() ?? '',
@@ -144,6 +208,11 @@ class Service {
       image: data['image']?.toString() ?? '',
       category: data['category']?.toString() ?? 'unghie',
       details: data['details']?.toString() ?? '',
+      useCategoryExtras: _parseBool(
+        data['useCategoryExtras'],
+        defaultValue: true,
+      ),
+      allowedExtraIds: parsedAllowedExtraIds,
       extras: parsedExtras,
     );
   }
@@ -156,7 +225,8 @@ class Service {
       'image': image,
       'category': category,
       'details': details,
-      'extras': extras.map((extra) => extra.toMap()).toList(),
+      'useCategoryExtras': useCategoryExtras,
+      'allowedExtraIds': allowedExtraIds,
       'active': true,
     };
   }
@@ -181,5 +251,25 @@ class Service {
     }
 
     return 0;
+  }
+
+  static bool _parseBool(dynamic value, {required bool defaultValue}) {
+    if (value is bool) {
+      return value;
+    }
+
+    if (value is String) {
+      final normalized = value.trim().toLowerCase();
+
+      if (normalized == 'true') {
+        return true;
+      }
+
+      if (normalized == 'false') {
+        return false;
+      }
+    }
+
+    return defaultValue;
   }
 }

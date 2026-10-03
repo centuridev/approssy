@@ -1,38 +1,385 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Reglas para la colección 'utenti' (usuarios)
-    match /utenti/{userId} {
-      // Permite crear documento (registro)
-      allow create: if request.auth != null && request.auth.uid == userId;
-      
-      // Solo el usuario puede leer su propio documento
-      allow read: if request.auth != null && request.auth.uid == userId;
-      
-      // Solo el usuario puede actualizar su propio documento
-      allow update: if request.auth != null && request.auth.uid == userId;
+    function signedIn() {
+      return request.auth != null;
     }
 
-    // Reglas para la colección 'appointments' (citas)
+    function isOwner(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/utenti/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/utenti/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isString(value) {
+      return value is string;
+    }
+
+    function isNullableString(value) {
+      return value == null || value is string;
+    }
+
+    function isValidPlatform(value) {
+      return value in [
+        'android',
+        'ios',
+        'macos',
+        'web',
+        'windows',
+        'linux',
+        'fuchsia'
+      ];
+    }
+
+    function isValidProfileData(data) {
+      return isString(data.nome) &&
+        isString(data.cognome) &&
+        isString(data.telefono) &&
+        isString(data.email);
+    }
+
+    function isValidUserCreate(userId) {
+      return isOwner(userId) &&
+        request.resource.data.keys().hasOnly([
+          'nome',
+          'cognome',
+          'telefono',
+          'email',
+          'role',
+          'createdAt',
+          'discountAwardedAt'
+        ]) &&
+        request.resource.data.keys().hasAll([
+          'nome',
+          'cognome',
+          'telefono',
+          'email',
+          'role',
+          'createdAt',
+          'discountAwardedAt'
+        ]) &&
+        isValidProfileData(request.resource.data) &&
+        request.resource.data.role == 'client' &&
+        request.resource.data.createdAt is timestamp &&
+        request.resource.data.discountAwardedAt == null;
+    }
+
+    function isValidUserProfileUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'nome',
+        'cognome',
+        'telefono',
+        'email'
+      ]) &&
+      isValidProfileData(request.resource.data) &&
+      request.resource.data.role == resource.data.role &&
+      request.resource.data.createdAt == resource.data.createdAt &&
+      request.resource.data.discountAwardedAt == resource.data.discountAwardedAt;
+    }
+
+    function isValidAdminUserUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'nome',
+        'cognome',
+        'telefono',
+        'email',
+        'role',
+        'discountAwardedAt'
+      ]) &&
+      isValidProfileData(request.resource.data) &&
+      request.resource.data.role in ['client', 'admin'] &&
+      request.resource.data.createdAt == resource.data.createdAt &&
+      (
+        request.resource.data.discountAwardedAt == null ||
+        request.resource.data.discountAwardedAt is timestamp
+      );
+    }
+
+    function isValidFcmTokenData(data) {
+      return data.keys().hasOnly([
+        'token',
+        'platform',
+        'createdAt',
+        'updatedAt'
+      ]) &&
+      data.keys().hasAll([
+        'token',
+        'platform',
+        'updatedAt'
+      ]) &&
+      isString(data.token) &&
+      isValidPlatform(data.platform) &&
+      data.updatedAt is timestamp &&
+      (
+        !('createdAt' in data) ||
+        data.createdAt is timestamp
+      );
+    }
+
+    function isValidAppointmentCreate() {
+      return signedIn() &&
+        request.auth.uid == request.resource.data.userId &&
+        request.resource.data.keys().hasOnly([
+          'userId',
+          'clientName',
+          'clientLastName',
+          'phone',
+          'email',
+          'serviceName',
+          'servicePrice',
+          'serviceDuration',
+          'services',
+          'servicesCount',
+          'selectedDateTime',
+          'status',
+          'holdUntil',
+          'createdAt'
+        ]) &&
+        request.resource.data.keys().hasAll([
+          'userId',
+          'clientName',
+          'clientLastName',
+          'phone',
+          'email',
+          'serviceName',
+          'servicePrice',
+          'serviceDuration',
+          'services',
+          'servicesCount',
+          'selectedDateTime',
+          'status',
+          'holdUntil',
+          'createdAt'
+        ]) &&
+        request.resource.data.status == 'pending' &&
+        isString(request.resource.data.clientName) &&
+        isString(request.resource.data.clientLastName) &&
+        isString(request.resource.data.phone) &&
+        isString(request.resource.data.email) &&
+        isString(request.resource.data.serviceName) &&
+        request.resource.data.servicePrice is number &&
+        request.resource.data.servicePrice >= 0 &&
+        request.resource.data.serviceDuration is int &&
+        request.resource.data.serviceDuration > 0 &&
+        request.resource.data.serviceDuration <= 720 &&
+        request.resource.data.services is list &&
+        request.resource.data.servicesCount is int &&
+        request.resource.data.servicesCount > 0 &&
+        request.resource.data.selectedDateTime is timestamp &&
+        request.resource.data.selectedDateTime >= request.time &&
+        request.resource.data.holdUntil is timestamp &&
+        request.resource.data.holdUntil > request.time &&
+        request.resource.data.createdAt == request.time;
+    }
+
+    function isValidClientAppointmentCancellation() {
+      return signedIn() &&
+        resource.data.userId == request.auth.uid &&
+        request.resource.data.userId == resource.data.userId &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status',
+          'cancelledAt',
+          'updatedAt'
+        ]) &&
+        resource.data.status in ['pending', 'confirmed'] &&
+        request.resource.data.status == 'cancelled' &&
+        request.resource.data.cancelledAt is timestamp &&
+        request.resource.data.updatedAt is timestamp;
+    }
+
+    function isValidWeeklyAvailability(dayId) {
+      return dayId in [
+        'monday',
+        'tuesday',
+        'wednesday',
+        'thursday',
+        'friday',
+        'saturday',
+        'sunday'
+      ] &&
+      request.resource.data.keys().hasOnly([
+        'enabled',
+        'startTime',
+        'endTime',
+        'breaks'
+      ]) &&
+      request.resource.data.keys().hasAll([
+        'enabled',
+        'startTime',
+        'endTime',
+        'breaks'
+      ]) &&
+      request.resource.data.enabled is bool &&
+      isNullableString(request.resource.data.startTime) &&
+      isNullableString(request.resource.data.endTime) &&
+      request.resource.data.breaks is list;
+    }
+
+    function isValidAvailabilityException() {
+      return request.resource.data.keys().hasOnly([
+        'date',
+        'type',
+        'reason',
+        'startTime',
+        'endTime',
+        'blockedIntervals',
+        'updatedAt'
+      ]) &&
+      request.resource.data.keys().hasAll([
+        'date',
+        'type',
+        'reason',
+        'blockedIntervals',
+        'updatedAt'
+      ]) &&
+      request.resource.data.date is timestamp &&
+      request.resource.data.type in ['closed', 'custom_hours'] &&
+      isString(request.resource.data.reason) &&
+      isNullableString(request.resource.data.startTime) &&
+      isNullableString(request.resource.data.endTime) &&
+      request.resource.data.blockedIntervals is list &&
+      request.resource.data.updatedAt == request.time;
+    }
+
+    function isValidServiceCategory(categoryId) {
+      return categoryId in ['unghie', 'lashes', 'pedicure'];
+    }
+
+    function isValidServiceWrite() {
+      return request.resource.data.keys().hasOnly([
+        'name',
+        'price',
+        'duration',
+        'image',
+        'category',
+        'details',
+        'extras',
+        'useCategoryExtras',
+        'allowedExtraIds',
+        'active'
+      ]) &&
+      request.resource.data.keys().hasAll([
+        'name',
+        'price',
+        'duration',
+        'image',
+        'category',
+        'active'
+      ]) &&
+      isString(request.resource.data.name) &&
+      isString(request.resource.data.price) &&
+      request.resource.data.duration is int &&
+      request.resource.data.duration > 0 &&
+      isString(request.resource.data.image) &&
+      isValidServiceCategory(request.resource.data.category) &&
+      (
+        !('details' in request.resource.data) ||
+        isString(request.resource.data.details)
+      ) &&
+      (
+        !('extras' in request.resource.data) ||
+        request.resource.data.extras is list
+      ) &&
+      (
+        !('useCategoryExtras' in request.resource.data) ||
+        request.resource.data.useCategoryExtras is bool
+      ) &&
+      (
+        !('allowedExtraIds' in request.resource.data) ||
+        request.resource.data.allowedExtraIds is list
+      ) &&
+      request.resource.data.active is bool;
+    }
+
+    function isValidServiceExtrasWrite(categoryId) {
+      return isValidServiceCategory(categoryId) &&
+        request.resource.data.keys().hasOnly([
+          'category',
+          'extras',
+          'updatedAt'
+        ]) &&
+        request.resource.data.keys().hasAll([
+          'category',
+          'extras'
+        ]) &&
+        request.resource.data.category == categoryId &&
+        request.resource.data.extras is list &&
+        (
+          !('updatedAt' in request.resource.data) ||
+          request.resource.data.updatedAt is timestamp
+        );
+    }
+
+    match /utenti/{userId} {
+      allow create: if isValidUserCreate(userId);
+      allow read: if isOwner(userId) || isAdmin();
+      allow update: if (
+        isOwner(userId) && isValidUserProfileUpdate()
+      ) || (
+        isAdmin() && isValidAdminUserUpdate()
+      );
+      allow delete: if false;
+
+      match /fcmTokens/{tokenId} {
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId) &&
+          isValidFcmTokenData(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+    }
+
     match /appointments/{appointmentId} {
-      // Todos los usuarios autenticados pueden leer todas las citas
-      allow read: if request.auth != null;
+      // Temporal: BookingPage todavía calcula disponibilidad leyendo citas.
+      allow read: if signedIn();
 
-      // Usuarios autenticados pueden crear citas
-      allow create: if request.auth != null &&
-        request.auth.uid == request.resource.data.userId;
+      allow create: if isValidAppointmentCreate();
 
-      // Solo el usuario que creó la cita puede actualizarla (para cancelar)
-      allow update: if request.auth != null &&
-        resource.data.userId == request.auth.uid;
+      allow update: if isAdmin() || isValidClientAppointmentCancellation();
 
-      // Admin (email específico) puede actualizar cualquier cita
-      allow update: if request.auth != null &&
-        request.auth.email == 'peniucrodika@gmail.com';
-        
-      // Todos pueden eliminar sus propias citas
-      allow delete: if request.auth != null &&
-        resource.data.userId == request.auth.uid;
+      allow delete: if isAdmin();
+
+      match /communications/{communicationId} {
+        allow read: if isAdmin();
+        allow write: if false;
+      }
+    }
+
+    match /services/{serviceId} {
+      allow read: if signedIn() && (
+        resource.data.active == true ||
+        isAdmin()
+      );
+      allow create, update: if isAdmin() && isValidServiceWrite();
+      allow delete: if isAdmin();
+    }
+
+    match /service_extras/{categoryId} {
+      allow read: if signedIn();
+      allow create, update: if isAdmin() &&
+        isValidServiceExtrasWrite(categoryId);
+      allow delete: if isAdmin();
+    }
+
+    match /weekly_availability/{dayId} {
+      allow read: if signedIn();
+      allow create, update: if isAdmin() &&
+        isValidWeeklyAvailability(dayId);
+      allow delete: if isAdmin();
+    }
+
+    match /availability_exceptions/{exceptionId} {
+      allow read: if signedIn();
+      allow create, update: if isAdmin() &&
+        isValidAvailabilityException();
+      allow delete: if isAdmin();
+    }
+
+    match /smtpEmailTests/{testId} {
+      allow read, write: if false;
     }
   }
 }

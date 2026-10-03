@@ -6,6 +6,7 @@ import {
 import * as logger from "firebase-functions/logger";
 import {
   AppointmentEmailData,
+  AppointmentEmailService,
   buildCancelledEmail,
   buildConfirmedEmail,
   buildNewBookingAdminEmail,
@@ -50,8 +51,20 @@ export async function sendAppointmentEmail({
 }: SendAppointmentEmailParams): Promise<string | null> {
   const db = getFirestore();
 
-  const recipient = resolveRecipient(type, appointment);
-  const template = resolveTemplate(type, appointment);
+  const enrichedAppointment =
+    await enrichAppointmentWithStoredServices(
+      appointment,
+    );
+
+  const recipient = resolveRecipient(
+    type,
+    enrichedAppointment,
+  );
+
+  const template = resolveTemplate(
+    type,
+    enrichedAppointment,
+  );
 
   if (!recipient) {
     logger.warn("Appointment email skipped: recipient missing.", {
@@ -170,6 +183,186 @@ export async function sendAppointmentEmail({
 
     throw error;
   }
+}
+
+/**
+ * Recupera dal documento Firestore la struttura completa dei servizi.
+ *
+ * Mantiene la compatibilità con le prenotazioni precedenti che non
+ * dispongono ancora del campo services.
+ *
+ * @param {AppointmentEmailData} appointment Dati ricevuti dalla funzione.
+ * @return {Promise<AppointmentEmailData>} Dati completi per l'email.
+ */
+async function enrichAppointmentWithStoredServices(
+  appointment: AppointmentEmailData,
+): Promise<AppointmentEmailData> {
+  try {
+    const db = getFirestore();
+
+    const snapshot = await db
+      .collection("appointments")
+      .doc(appointment.appointmentId)
+      .get();
+
+    if (!snapshot.exists) {
+      logger.warn(
+        "Unable to enrich appointment email: document not found.",
+        {
+          appointmentId: appointment.appointmentId,
+        },
+      );
+
+      return appointment;
+    }
+
+    const data = snapshot.data();
+
+    if (!data) {
+      return appointment;
+    }
+
+    const services = parseAppointmentServices(
+      data.services,
+    );
+
+    if (services.length === 0) {
+      return appointment;
+    }
+
+    const servicesCountValue =
+      typeof data.servicesCount === "number" ?
+        Math.trunc(data.servicesCount) :
+        services.length;
+
+    return {
+      ...appointment,
+      services,
+      servicesCount: servicesCountValue,
+    };
+  } catch (error) {
+    logger.error(
+      "Unable to load services for appointment email.",
+      {
+        appointmentId: appointment.appointmentId,
+        error,
+      },
+    );
+
+    // Il sistema email continua a funzionare con il formato precedente.
+    return appointment;
+  }
+}
+
+/**
+ * Converte il campo services di Firestore nel formato delle email.
+ *
+ * @param {unknown} value Campo services salvato nell'appuntamento.
+ * @return {AppointmentEmailService[]} Servizi validi.
+ */
+function parseAppointmentServices(
+  value: unknown,
+): AppointmentEmailService[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter(
+      (item): item is Record<string, unknown> =>
+        item !== null &&
+        typeof item === "object" &&
+        !Array.isArray(item),
+    )
+    .map((service) => {
+      const extrasValue = service.extras;
+
+      const extras = Array.isArray(extrasValue) ?
+        extrasValue
+          .filter(
+            (item): item is Record<string, unknown> =>
+              item !== null &&
+              typeof item === "object" &&
+              !Array.isArray(item),
+          )
+          .map((extra) => ({
+            id: optionalString(extra.id),
+            name: optionalString(extra.name) || "Extra",
+            price: optionalNumber(extra.price),
+            duration: optionalNumber(extra.duration),
+          })) :
+        [];
+
+      return {
+        serviceId: optionalString(
+          service.serviceId,
+        ),
+        name:
+          optionalString(service.name) ||
+          "Servizio",
+        price: optionalNumber(service.price),
+        duration: optionalNumber(
+          service.duration,
+        ),
+        extras,
+        totalPrice: optionalNumber(
+          service.totalPrice,
+        ),
+        totalDuration: optionalNumber(
+          service.totalDuration,
+        ),
+      };
+    });
+}
+
+/**
+ * Converte un valore in stringa opzionale.
+ *
+ * @param {unknown} value Valore originale.
+ * @return {string|undefined} Stringa convertita.
+ */
+function optionalString(
+  value: unknown,
+): string | undefined {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+
+  const result = String(value).trim();
+
+  return result.length > 0 ?
+    result :
+    undefined;
+}
+
+/**
+ * Converte un valore numerico proveniente da Firestore.
+ *
+ * @param {unknown} value Valore originale.
+ * @return {number|undefined} Numero convertito.
+ */
+function optionalNumber(
+  value: unknown,
+): number | undefined {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ?
+      value :
+      undefined;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value
+      .replace(",", ".")
+      .trim();
+
+    const parsed = Number(normalized);
+
+    return Number.isFinite(parsed) ?
+      parsed :
+      undefined;
+  }
+
+  return undefined;
 }
 
 /**

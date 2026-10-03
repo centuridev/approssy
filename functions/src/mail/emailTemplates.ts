@@ -4,15 +4,37 @@ const BUSINESS_NAME = "Rosi Beauty Premium";
 const BUSINESS_EMAIL = "prenotazioni@rosibeautypremium.it";
 const TIME_ZONE = "Europe/Rome";
 
+export interface AppointmentEmailExtra {
+  id?: string;
+  name: string;
+  price?: number;
+  duration?: number;
+}
+
+export interface AppointmentEmailService {
+  serviceId?: string;
+  name: string;
+  price?: number;
+  duration?: number;
+  extras?: AppointmentEmailExtra[];
+  totalPrice?: number;
+  totalDuration?: number;
+}
+
 export interface AppointmentEmailData {
   appointmentId: string;
   clientName: string;
   clientLastName?: string;
   clientEmail?: string;
   clientPhone?: string;
+
   serviceName: string;
   serviceDuration: number;
   servicePrice?: number;
+
+  services?: AppointmentEmailService[];
+  servicesCount?: number;
+
   selectedDateTime: Timestamp;
   businessAddress?: string;
 }
@@ -285,10 +307,22 @@ function buildAppointmentTemplate(
   showAdminDetails = false,
 ): EmailTemplate {
   const formatted = formatAppointment(appointment);
-  const safeServiceName = escapeHtml(appointment.serviceName);
-  const safeEmail = escapeHtml(appointment.clientEmail ?? "");
-  const safePhone = escapeHtml(appointment.clientPhone ?? "");
-  const safeAddress = escapeHtml(appointment.businessAddress ?? "");
+
+  const safeEmail = escapeHtml(
+    appointment.clientEmail ?? "",
+  );
+
+  const safePhone = escapeHtml(
+    appointment.clientPhone ?? "",
+  );
+
+  const safeAddress = escapeHtml(
+    appointment.businessAddress ?? "",
+  );
+
+  const servicesHtml = buildServicesHtml(
+    appointment,
+  );
 
   const adminDetails = showAdminDetails ?
     buildAdminDetails(safeEmail, safePhone) :
@@ -296,10 +330,6 @@ function buildAppointmentTemplate(
 
   const addressRow = safeAddress ?
     buildDetailRow("Indirizzo", safeAddress) :
-    "";
-
-  const priceRow = appointment.servicePrice !== undefined ?
-    buildDetailRow("Prezzo", formatted.formattedPrice) :
     "";
 
   const calendarButton = copy.showCalendarButton ?
@@ -386,16 +416,26 @@ function buildAppointmentTemplate(
         border-left:5px solid #dda33b;
         border-radius:10px;
       ">
-        ${buildDetailRow("Servizio", safeServiceName)}
-        ${buildDetailRow("Data", formatted.formattedDate)}
-        ${buildDetailRow("Ora", formatted.formattedTime)}
-        ${buildDetailRow(
-    "Durata",
-    `${appointment.serviceDuration} minuti`,
+                ${servicesHtml}
+
+                <div style="
+                  margin-top:18px;
+                  padding-top:15px;
+                  border-top:1px solid #ead8b5;
+                ">
+                  ${buildDetailRow(
+    "Data",
+    formatted.formattedDate,
   )}
-        ${priceRow}
-        ${addressRow}
-        ${adminDetails}
+
+                  ${buildDetailRow(
+    "Ora",
+    formatted.formattedTime,
+  )}
+
+                  ${addressRow}
+                  ${adminDetails}
+                </div>
       </div>
 
       <div style="
@@ -458,6 +498,278 @@ function buildAppointmentTemplate(
     html,
   };
 }
+
+/**
+ * Costruisce il riepilogo HTML dei servizi prenotati.
+ *
+ * @param {AppointmentEmailData} appointment Dati dell'appuntamento.
+ * @return {string} HTML dei servizi e degli extra.
+ */
+function buildServicesHtml(
+  appointment: AppointmentEmailData,
+): string {
+  const services = appointment.services ?? [];
+
+  if (services.length === 0) {
+    return buildLegacyServicesHtml(appointment);
+  }
+
+  const servicesHtml = services
+    .map((service, index) => {
+      const serviceName = escapeHtml(
+        service.name || "Servizio",
+      );
+
+      const servicePrice = formatMoney(
+        service.price,
+      );
+
+      const serviceDuration = formatDuration(
+        service.duration ?? 0,
+      );
+
+      const extras = service.extras ?? [];
+
+      const extrasHtml = extras.length > 0 ?
+        `
+          <div style="
+            margin-top:10px;
+            padding-left:10px;
+          ">
+            <div style="
+              margin-bottom:6px;
+              color:#b47d19;
+              font-size:13px;
+              font-weight:700;
+            ">
+              Extra
+            </div>
+
+            ${extras
+    .map((extra) => {
+      const extraName = escapeHtml(
+        extra.name || "Extra",
+      );
+
+      const extraPrice = formatMoney(
+        extra.price,
+      );
+
+      const extraDuration =
+        formatDuration(
+          extra.duration ?? 0,
+        );
+
+      return `
+                  <div style="
+                    margin:0 0 6px;
+                    font-size:14px;
+                    line-height:1.45;
+                  ">
+                    <span style="
+                      color:#dda33b;
+                      font-weight:700;
+                    ">
+                      +
+                    </span>
+
+                    ${extraName}
+
+                    <span style="
+                      color:#666666;
+                    ">
+                      &nbsp; ${extraPrice}
+                      &nbsp;·&nbsp;
+                      +${extraDuration}
+                    </span>
+                  </div>
+                `;
+    })
+    .join("")}
+          </div>
+        ` :
+        "";
+
+      return `
+        <div style="
+          ${
+  index > 0 ?
+    "padding-top:14px;border-top:1px solid #ead8b5;" :
+    ""
+}
+          margin-bottom:14px;
+        ">
+          <div style="
+            font-size:15px;
+            font-weight:700;
+            line-height:1.45;
+          ">
+            ${index + 1}. ${serviceName}
+          </div>
+
+          <div style="
+            margin-top:4px;
+            color:#666666;
+            font-size:13px;
+            line-height:1.4;
+          ">
+            ${servicePrice}
+            &nbsp;·&nbsp;
+            ${serviceDuration}
+          </div>
+
+          ${extrasHtml}
+        </div>
+      `;
+    })
+    .join("");
+
+  return `
+    <div>
+      <div style="
+        margin-bottom:14px;
+        color:#222222;
+        font-size:15px;
+        font-weight:700;
+      ">
+        Servizi prenotati
+      </div>
+
+      ${servicesHtml}
+
+      <div style="
+        display:block;
+        margin-top:12px;
+        padding-top:14px;
+        border-top:2px solid #dda33b;
+      ">
+        <table
+          role="presentation"
+          width="100%"
+          cellspacing="0"
+          cellpadding="0"
+          border="0"
+        >
+          <tr>
+            <td style="
+              font-size:15px;
+              font-weight:700;
+            ">
+              Totale
+            </td>
+
+            <td
+              align="right"
+              style="
+                font-size:15px;
+                font-weight:700;
+              "
+            >
+              ${formatDuration(
+    appointment.serviceDuration,
+  )}
+              &nbsp;&nbsp;
+              <span style="color:#b47d19;">
+                ${formatMoney(
+    appointment.servicePrice,
+  )}
+              </span>
+            </td>
+          </tr>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Costruisce il riepilogo per le prenotazioni precedenti.
+ *
+ * @param {AppointmentEmailData} appointment Dati dell'appuntamento.
+ * @return {string} HTML compatibile con il vecchio formato.
+ */
+function buildLegacyServicesHtml(
+  appointment: AppointmentEmailData,
+): string {
+  return `
+    ${buildDetailRow(
+    "Servizio",
+    escapeHtml(appointment.serviceName),
+  )}
+
+    ${buildDetailRow(
+    "Durata",
+    formatDuration(
+      appointment.serviceDuration,
+    ),
+  )}
+
+    ${
+  appointment.servicePrice !== undefined ?
+    buildDetailRow(
+      "Prezzo",
+      formatMoney(
+        appointment.servicePrice,
+      ),
+    ) :
+    ""
+}
+  `;
+}
+
+/**
+ * Formatta un importo in euro.
+ *
+ * @param {number|undefined} value Importo.
+ * @return {string} Importo formattato.
+ */
+function formatMoney(
+  value?: number,
+): string {
+  if (typeof value !== "number") {
+    return "";
+  }
+
+  return new Intl.NumberFormat(
+    "it-IT",
+    {
+      style: "currency",
+      currency: "EUR",
+    },
+  ).format(value);
+}
+
+/**
+ * Formatta una durata in ore e minuti.
+ *
+ * @param {number} minutes Durata in minuti.
+ * @return {string} Durata leggibile.
+ */
+function formatDuration(
+  minutes: number,
+): string {
+  const safeMinutes =
+    Number.isFinite(minutes) ?
+      Math.max(0, Math.trunc(minutes)) :
+      0;
+
+  const hours =
+    Math.floor(safeMinutes / 60);
+
+  const remainingMinutes =
+    safeMinutes % 60;
+
+  if (hours === 0) {
+    return `${remainingMinutes} min`;
+  }
+
+  if (remainingMinutes === 0) {
+    return `${hours}h`;
+  }
+
+  return `${hours}h ${remainingMinutes}min`;
+}
+
 
 /**
  * Costruisce una riga della scheda dei dettagli.
@@ -614,6 +926,79 @@ function toGoogleCalendarDate(date: Date): string {
     .replace(/\.\d{3}Z$/, "Z");
 }
 
+
+/**
+ * Costruisce le righe testuali dei servizi.
+ *
+ * @param {AppointmentEmailData} appointment Dati dell'appuntamento.
+ * @return {string[]} Righe testuali.
+ */
+function buildServicesTextLines(
+  appointment: AppointmentEmailData,
+): string[] {
+  const services = appointment.services ?? [];
+
+  if (services.length === 0) {
+    return [
+      `Servizio: ${appointment.serviceName}`,
+      `Durata: ${formatDuration(
+        appointment.serviceDuration,
+      )}`,
+      appointment.servicePrice !== undefined ?
+        `Prezzo: ${formatMoney(
+          appointment.servicePrice,
+        )}` :
+        "",
+    ].filter(Boolean);
+  }
+
+  const lines: string[] = [
+    "Servizi prenotati:",
+    "",
+  ];
+
+  services.forEach((service, index) => {
+    lines.push(
+      `${index + 1}. ${service.name}`,
+    );
+
+    lines.push(
+      `   ${formatMoney(service.price)} · ` +
+      `${formatDuration(
+        service.duration ?? 0,
+      )}`,
+    );
+
+    const extras = service.extras ?? [];
+
+    if (extras.length > 0) {
+      lines.push("   Extra:");
+
+      extras.forEach((extra) => {
+        lines.push(
+          `   + ${extra.name} · ` +
+          `${formatMoney(extra.price)} · ` +
+          `+${formatDuration(
+            extra.duration ?? 0,
+          )}`,
+        );
+      });
+    }
+
+    lines.push("");
+  });
+
+  lines.push(
+    `Totale: ${formatDuration(
+      appointment.serviceDuration,
+    )} · ${formatMoney(
+      appointment.servicePrice,
+    )}`,
+  );
+
+  return lines;
+}
+
 /**
  * Costruisce la versione testuale alternativa dell'email.
  *
@@ -638,15 +1023,11 @@ function buildTextVersion(
     "",
     stripHtml(copy.message),
     "",
-    `Servizio: ${appointment.serviceName}`,
+    ...buildServicesTextLines(appointment),
+    "",
     `Data: ${formatted.formattedDate}`,
     `Ora: ${formatted.formattedTime}`,
-    `Durata: ${appointment.serviceDuration} minuti`,
   ];
-
-  if (appointment.servicePrice !== undefined) {
-    lines.push(`Prezzo: ${formatted.formattedPrice}`);
-  }
 
   if (appointment.businessAddress) {
     lines.push(`Indirizzo: ${appointment.businessAddress}`);
